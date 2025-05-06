@@ -53,11 +53,20 @@ typedef struct {
     const char *data;
 } BreadhashConfig;
 
+void base92(char c) {
+    printf("%c", c);
+}
+
+void string_to_base92(const char *data) {
+    for (int i = 0; i < strlen(data); i++) {
+        base92(data[i]);
+    }
+}
+
 void run_operation(BreadhashConfig *config) {
     if (config->opmode == OPBASE92) {
         if (config->input_mode == INPUTSTRING) {
-            printf("Running base92 hash on string: %s\n", config->data);
-            // call your base92 hashing logic here, passing config->data
+            string_to_base92(config->data);
         } else if (config->input_mode == INPUTFILE) {
             fprintf(stderr, "File input not implemented yet.\n");
         } else {
