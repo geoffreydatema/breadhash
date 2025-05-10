@@ -34,9 +34,11 @@
 -------------------------------------------------------------------------------------------------------*/
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef enum {
+    INPUTINTEGER,
     INPUTSTRING,
     INPUTFILE,
     INPUTUNIMPLEMENTED
@@ -53,20 +55,50 @@ typedef struct {
     const char *data;
 } BreadhashConfig;
 
-void base92(char c) {
-    printf("%c", c);
+const char base92_chars[] = {'!','#','$','%','&','\'','(',')','*','+',',','-','.','/','0','1','2','3','4','5','6','7','8','9',':',';','<','=','>','?','@','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','[',']','^','_','`','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','{','|','}','~'};
+
+char *base92(unsigned int v) {
+    if (v == 0) {
+        char *zero_str = malloc(2);
+        zero_str[0] = base92_chars[0];
+        zero_str[1] = '\0';
+        return zero_str;
+    }
+
+    char buffer[32];
+    int index = sizeof(buffer) - 1;
+    buffer[index--] = '\0';
+
+    while (v > 0 && index >= 0) {
+        buffer[index--] = base92_chars[v % 92];
+        v /= 92;
+    }
+
+    char *result = malloc(strlen(&buffer[index + 1]) + 1);
+    strcpy(result, &buffer[index + 1]);
+    return result;
 }
 
-void string_to_base92(const char *data) {
+void int_to_base92(const char *data) {
+    char *base92char = base92(atoi(data));
+    printf("%s", base92char);
+    free(base92char);
+}
+
+void str_to_base92(const char *data) {
     for (int i = 0; i < strlen(data); i++) {
-        base92(data[i]);
+        char *base92char = base92(data[i]);
+        printf("%s", base92char);
+        free(base92char);
     }
 }
 
 void run_operation(BreadhashConfig *config) {
     if (config->opmode == OPBASE92) {
-        if (config->input_mode == INPUTSTRING) {
-            string_to_base92(config->data);
+        if (config->input_mode == INPUTINTEGER) {
+            int_to_base92(config->data);
+        } else if (config->input_mode == INPUTSTRING) {
+            str_to_base92(config->data);
         } else if (config->input_mode == INPUTFILE) {
             fprintf(stderr, "File input not implemented yet.\n");
         } else {
@@ -85,7 +117,7 @@ int main(int argc, char *argv[]) {
             "Usage:\n"
             "    <input mode> <operation> <data>\n\n"
             "Available input modes:\n"
-            "    --file --string\n\n"
+            "    --int --str --file\n\n"
             "Available operations:\n"
             "    --base92\n\n"
         );
@@ -98,7 +130,9 @@ int main(int argc, char *argv[]) {
     config.data = argv[3];
 
     // parse input mode (string or file)
-    if (strcmp(argv[1], "--string") == 0) {
+    if (strcmp(argv[1], "--int") == 0) {
+        config.input_mode = INPUTINTEGER;
+    } else if (strcmp(argv[1], "--str") == 0) {
         config.input_mode = INPUTSTRING;
     } else if (strcmp(argv[1], "--file") == 0) {
         config.input_mode = INPUTFILE;
