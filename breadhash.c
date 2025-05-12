@@ -56,6 +56,7 @@ typedef enum {
     OPORDSTACKDEC,
     OPORDSTACKBASE92,
     OPWRAPMINIHASH,
+    OPBREADHASHSHORT,
     OPUNIMPLEMENTED
 } OpMode;
 
@@ -69,8 +70,8 @@ static const char base92_chars[] = {'!','#','$','%','&','\'','(',')','*','+',','
 
 int base92_charmap[128] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,-1,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,-1,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,-1};
 
-char *base92(unsigned int v) {
-    if (v == 0) {
+char *base92(unsigned int value) {
+    if (value == 0) {
         char *zero_str = malloc(2);
         if (!zero_str) return NULL;
         zero_str[0] = base92_chars[0];
@@ -82,9 +83,9 @@ char *base92(unsigned int v) {
     int index = sizeof(buffer) - 1;
     buffer[index--] = '\0';
 
-    while (v > 0 && index >= 0) {
-        buffer[index--] = base92_chars[v % 92];
-        v /= 92;
+    while (value > 0 && index >= 0) {
+        buffer[index--] = base92_chars[value % 92];
+        value /= 92;
     }
 
     char *result = malloc(strlen(&buffer[index + 1]) + 1);
@@ -170,6 +171,43 @@ uint32_t minihash(const char *input) {
     return hash;
 }
 
+char *breadhash(const char *input, int hash_length) {
+    size_t input_length = strlen(input);
+    if (hash_length <= 0 || input_length == 0) return NULL;
+
+    char *result = calloc(hash_length + 1, sizeof(char));
+    if (!result) return NULL;
+
+    int interval = input_length / hash_length;
+    if (interval == 0) interval = 1;
+
+    int hash_char_counter = 0;
+    for (size_t i = 0; i < input_length && hash_char_counter < hash_length; i += interval) {
+        result[hash_char_counter] = (char)((unsigned char)input[i]);
+        hash_char_counter++;
+    }
+
+    result[hash_char_counter] = '\0';
+    for (size_t i = 0; i < hash_length; i++) {
+        char *base92_str = base92((unsigned char)result[i] % 92);
+        if (!base92_str) {
+            free(result);
+            return NULL;
+        }
+        result[i] = base92_str[0];
+        free(base92_str);
+        printf("%c.", result[i]);
+    }
+
+    return result;
+}
+    
+
+
+    // then iterate through the entire data adjusting all chars on each iteration
+
+    // can think about the approach for adjusting the chars to make it avalanche nicely
+
 void run_operation(BreadhashConfig *config) {
     if (config->opmode == OPBASE92) {
         if (config->input_mode == INPUTINTEGER) {
@@ -220,6 +258,12 @@ void run_operation(BreadhashConfig *config) {
             uint32_t result = minihash(config->data);
             printf("%u", result);
         }
+    } else if (config->opmode == OPBREADHASHSHORT) {
+        if (config->input_mode != INPUTINTEGER) {
+            char *result = breadhash(config->data, 8);
+            // printf("%s", result);
+            free(result);
+        }
     } else {
         fprintf(stderr, "Unknown operation mode.\n");
     }
@@ -238,7 +282,8 @@ int main(int argc, char *argv[]) {
             "    --base92 --from-base92\n"
             "    --naive-additive-decimal --naive-additive-base92\n"
             "    --ordinal-stack-decimal --ordinal-stack-base92\n"
-            "    --minihash\n\n"
+            "    --minihash\n"
+            "    --short\n\n"
         );
         return 1;
     }
@@ -299,6 +344,8 @@ int main(int argc, char *argv[]) {
         config.opmode = OPORDSTACKBASE92;
     } else if (strcmp(argv[2], "--minihash") == 0) {
         config.opmode = OPWRAPMINIHASH;
+    } else if (strcmp(argv[2], "--short") == 0) {
+        config.opmode = OPBREADHASHSHORT;
     } else {
         fprintf(stderr, "Unknown operation: %s\n", argv[2]);
         return 1;
