@@ -41,6 +41,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define MAX_HASH_LENGTH 64
+
 typedef enum {
     INPUTINTEGER,
     INPUTSTRING,
@@ -56,7 +58,10 @@ typedef enum {
     OPORDSTACKDEC,
     OPORDSTACKBASE92,
     OPWRAPMINIHASH,
-    OPBREADHASHSHORT,
+    OPBREADHASH8,
+    OPBREADHASH16,
+    OPBREADHASH32,
+    OPBREADHASH64,
     OPUNIMPLEMENTED
 } OpMode;
 
@@ -93,6 +98,15 @@ char *base92(unsigned int value) {
     strcpy(result, &buffer[index + 1]);
     return result;
 }
+
+char base92_char(unsigned int value) {
+    if (value >= 92) {
+        fprintf(stderr, "Error: base92_char() received out-of-range value: %u (must be 0–91)\n", value);
+        return '!';
+    }
+    return base92_chars[value];
+}
+
 
 char *int_to_base92(const char *data) {
     return base92(atoi(data));
@@ -165,7 +179,6 @@ uint32_t minihash(const char *input) {
 
     for (size_t i = 0; input[i] != '\0'; i++) {
         hash = ((hash << 4) + hash) * (unsigned char)input[i] + 69;
-        // printf("%u\n", hash);
     }
 
     return hash;
@@ -173,40 +186,39 @@ uint32_t minihash(const char *input) {
 
 char *breadhash(const char *input, int hash_length) {
     size_t input_length = strlen(input);
-    if (hash_length <= 0 || input_length == 0) return NULL;
+    if (hash_length <= 0 || hash_length > MAX_HASH_LENGTH || input_length == 0) return NULL;
 
-    char *result = calloc(hash_length + 1, sizeof(char));
+    unsigned char *result = calloc(hash_length + 1, sizeof(char));
     if (!result) return NULL;
 
-    int interval = input_length / hash_length;
-    if (interval == 0) interval = 1;
+    unsigned char entropy[MAX_HASH_LENGTH] = {0};
+    int filled = 0;
+    int step = input_length / hash_length;
+    if (step == 0) step = 1;
 
-    int hash_char_counter = 0;
-    for (size_t i = 0; i < input_length && hash_char_counter < hash_length; i += interval) {
-        result[hash_char_counter] = (char)((unsigned char)input[i]);
-        hash_char_counter++;
-    }
+    int current_step = step;
+    int round = 0;
 
-    result[hash_char_counter] = '\0';
-    for (size_t i = 0; i < hash_length; i++) {
-        char *base92_str = base92((unsigned char)result[i] % 92);
-        if (!base92_str) {
-            free(result);
-            return NULL;
+    while (filled < MAX_HASH_LENGTH) {
+        for (size_t i = 0; i < input_length && filled < MAX_HASH_LENGTH; i += current_step) {
+            entropy[filled++] = (unsigned char)input[i];
         }
-        result[i] = base92_str[0];
-        free(base92_str);
-        printf("%c.", result[i]);
+        current_step++;
+        round++;
+        if (current_step > input_length) current_step = 1 + (round % input_length);
     }
 
-    return result;
+    memcpy(result, entropy, hash_length);
+    result[hash_length] = '\0';
+
+    for (size_t i = 0; input[i] != '\0'; i++) {
+        for (size_t j = 0; j < hash_length; j++) {
+            result[j] = base92_char((result[j] + input[i]) % 92);
+        }
+    }
+
+    return (char *)result;
 }
-    
-
-
-    // then iterate through the entire data adjusting all chars on each iteration
-
-    // can think about the approach for adjusting the chars to make it avalanche nicely
 
 void run_operation(BreadhashConfig *config) {
     if (config->opmode == OPBASE92) {
@@ -258,10 +270,28 @@ void run_operation(BreadhashConfig *config) {
             uint32_t result = minihash(config->data);
             printf("%u", result);
         }
-    } else if (config->opmode == OPBREADHASHSHORT) {
+    } else if (config->opmode == OPBREADHASH8) {
         if (config->input_mode != INPUTINTEGER) {
             char *result = breadhash(config->data, 8);
-            // printf("%s", result);
+            printf("%s", result);
+            free(result);
+        }
+    } else if (config->opmode == OPBREADHASH16) {
+        if (config->input_mode != INPUTINTEGER) {
+            char *result = breadhash(config->data, 16);
+            printf("%s", result);
+            free(result);
+        }
+    } else if (config->opmode == OPBREADHASH32) {
+        if (config->input_mode != INPUTINTEGER) {
+            char *result = breadhash(config->data, 32);
+            printf("%s", result);
+            free(result);
+        }
+    } else if (config->opmode == OPBREADHASH64) {
+        if (config->input_mode != INPUTINTEGER) {
+            char *result = breadhash(config->data, 64);
+            printf("%s", result);
             free(result);
         }
     } else {
@@ -283,7 +313,8 @@ int main(int argc, char *argv[]) {
             "    --naive-additive-decimal --naive-additive-base92\n"
             "    --ordinal-stack-decimal --ordinal-stack-base92\n"
             "    --minihash\n"
-            "    --short\n\n"
+            "    --breadhash8 --breadhash16\n"
+            "    --breadhash32 --breadhash64\n\n"
         );
         return 1;
     }
@@ -344,8 +375,14 @@ int main(int argc, char *argv[]) {
         config.opmode = OPORDSTACKBASE92;
     } else if (strcmp(argv[2], "--minihash") == 0) {
         config.opmode = OPWRAPMINIHASH;
-    } else if (strcmp(argv[2], "--short") == 0) {
-        config.opmode = OPBREADHASHSHORT;
+    } else if (strcmp(argv[2], "--breadhash8") == 0) {
+        config.opmode = OPBREADHASH8;
+    } else if (strcmp(argv[2], "--breadhash16") == 0) {
+        config.opmode = OPBREADHASH16;
+    } else if (strcmp(argv[2], "--breadhash32") == 0) {
+        config.opmode = OPBREADHASH32;
+    } else if (strcmp(argv[2], "--breadhash64") == 0) {
+        config.opmode = OPBREADHASH64;
     } else {
         fprintf(stderr, "Unknown operation: %s\n", argv[2]);
         return 1;
