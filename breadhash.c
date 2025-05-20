@@ -101,7 +101,7 @@ char *base92(unsigned int value) {
 
 char base92_char(unsigned int value) {
     if (value >= 92) {
-        fprintf(stderr, "Error: base92_char() received out-of-range value: %u (must be 0–91)\n", value);
+        fprintf(stderr, "Error: base92_char() received out-of-range value: %u (must be 0-91)\n", value);
         return '!';
     }
     return base92_chars[value];
@@ -211,9 +211,18 @@ char *breadhash(const char *input, int hash_length) {
     memcpy(result, entropy, hash_length);
     result[hash_length] = '\0';
 
+    uint32_t bread = UINT32_MAX / 2;
     for (size_t i = 0; input[i] != '\0'; i++) {
+        bread = (bread * 31) ^ input[i];
         for (size_t j = 0; j < hash_length; j++) {
-            result[j] = base92_char((result[j] + input[i]) % 92);
+            result[j] = base92_char((result[j] + ((input[i] ^ (i * 31 + j * 17)) % 256)) % 92);
+        }
+    }
+
+    for (int i = input_length - 1; i >= 0; i--) {
+        bread = (bread * 31) ^ input[i];
+        for (int j = hash_length - 1; j >= 0; j--) {
+            result[j] = base92_char((result[j] + ((bread >> (j % 24)) ^ (input[i] * (j + 1)))) % 92);
         }
     }
 
