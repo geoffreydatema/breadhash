@@ -16,7 +16,7 @@
     .                                                                               :+-=*      @@@      |
    ..                                                                                  -#+=*=   #@@     |
     .                                          breadhash                                ..:#*##*:*@     |
-    ..                                            0.1                                    ..+#+-#%:@     |
+    ..                                                                                   ..+#+-#%:@     |
     :.                                                                                      ...-@*@     |
      .:  .                                                                                     %%@      |
      .==-.                                                                                   .#+@       |
@@ -62,6 +62,7 @@ typedef enum {
     OPBREADHASH16,
     OPBREADHASH32,
     OPBREADHASH64,
+    OPFRAGHASH64_8,
     OPUNIMPLEMENTED
 } OpMode;
 
@@ -212,9 +213,9 @@ char *breadhash(const char *input, int hash_length) {
     result[hash_length] = '\0';
 
     uint32_t bread = UINT32_MAX / 2;
-    for (size_t i = 0; input[i] != '\0'; i++) {
+    for (int i = 0; input[i] != '\0'; i++) {
         bread = (bread * 42) ^ input[i];
-        for (size_t j = 0; j < hash_length; j++) {
+        for (int j = 0; j < hash_length; j++) {
             result[j] = base92_char((result[j] * bread + ((input[i] ^ (i * 42 + j * 69)) % 256)) % 92);
         }
     }
@@ -227,6 +228,56 @@ char *breadhash(const char *input, int hash_length) {
     }
 
     return (char *)result;
+}
+
+char **fraghash(const char *input, int num_fragments, int hash_length) {
+    size_t input_length = strlen(input);
+    if (num_fragments <= 0 || hash_length <= 0 || input_length == 0) return NULL;
+
+    if (input_length < (size_t)num_fragments) {
+        fprintf(stderr, "Error: Input length (%zu) is too short to split into %i fragments.\n", input_length, num_fragments);
+        return NULL;
+    }
+    
+    char **hashes = calloc(num_fragments, sizeof(char *));
+    if (!hashes) return NULL;
+
+    size_t base_fragment_size = input_length / num_fragments;
+    size_t offset = 0;
+
+    for (int i = 0; i < num_fragments; i++) {
+        size_t frag_size = (i == num_fragments - 1) ? (input_length - offset) : base_fragment_size;
+
+        char *fragment = calloc(frag_size + 1, sizeof(char));
+        if (!fragment) {
+            for (int j = 0; j < i; j++) free(hashes[j]);
+            free(hashes);
+            return NULL;
+        }
+
+        memcpy(fragment, input + offset, frag_size);
+        fragment[frag_size] = '\0';
+        offset += frag_size;
+
+        hashes[i] = breadhash(fragment, hash_length);
+        free(fragment);
+
+        if (!hashes[i]) {
+            for (int j = 0; j <= i; j++) free(hashes[j]);
+            free(hashes);
+            return NULL;
+        }
+    }
+
+    return hashes;
+}
+
+void print_hash_block(const char *hash, int hash_length, int line_width) {
+    for (int i = 0; i < hash_length; i++) {
+        putchar(hash[i]);
+        if ((i + 1) % line_width == 0)
+            putchar('\n');
+    }
 }
 
 void run_operation(BreadhashConfig *config) {
@@ -303,6 +354,18 @@ void run_operation(BreadhashConfig *config) {
             printf("%s", result);
             free(result);
         }
+    } else if (config->opmode == OPFRAGHASH64_8) {
+        if (config->input_mode != INPUTINTEGER) {
+            char **results = fraghash(config->data, 8, 64);
+            if (results) {
+                for (int i = 0; i < 8; i++) {
+                    print_hash_block(results[i], 64, 16);
+                    putchar('\n');
+                    free(results[i]);
+                }
+                free(results);
+            }
+        }
     } else {
         fprintf(stderr, "Unknown operation mode.\n");
     }
@@ -323,7 +386,8 @@ int main(int argc, char *argv[]) {
             "    --ordinal-stack-decimal --ordinal-stack-base92\n"
             "    --minihash\n"
             "    --breadhash8 --breadhash16\n"
-            "    --breadhash32 --breadhash64\n\n"
+            "    --breadhash32 --breadhash64\n"
+            "    --fraghash64-8\n\n"
         );
         return 1;
     }
@@ -392,6 +456,8 @@ int main(int argc, char *argv[]) {
         config.opmode = OPBREADHASH32;
     } else if (strcmp(argv[2], "--breadhash64") == 0) {
         config.opmode = OPBREADHASH64;
+    } else if (strcmp(argv[2], "--breadhash64-8") == 0) {
+        config.opmode = OPFRAGHASH64_8;
     } else {
         fprintf(stderr, "Unknown operation: %s\n", argv[2]);
         return 1;
@@ -404,7 +470,3 @@ int main(int argc, char *argv[]) {
     }
     return 0;
 }
-
-// @! basic hash functions: maybe start with 32 bit hash but easily can make them variable size (8,16,32,64 bit)
-
-// @! block / fragment hashing
