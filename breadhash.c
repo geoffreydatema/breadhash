@@ -213,16 +213,16 @@ char *breadhash(const char *input, int hash_length) {
 
     uint32_t bread = UINT32_MAX / 2;
     for (size_t i = 0; input[i] != '\0'; i++) {
-        bread = (bread * 31) ^ input[i];
+        bread = (bread * 42) ^ input[i];
         for (size_t j = 0; j < hash_length; j++) {
-            result[j] = base92_char((result[j] + ((input[i] ^ (i * 31 + j * 17)) % 256)) % 92);
+            result[j] = base92_char((result[j] * bread + ((input[i] ^ (i * 42 + j * 69)) % 256)) % 92);
         }
     }
 
     for (int i = input_length - 1; i >= 0; i--) {
-        bread = (bread * 31) ^ input[i];
+        bread = (bread * 69) ^ input[i];
         for (int j = hash_length - 1; j >= 0; j--) {
-            result[j] = base92_char((result[j] + ((bread >> (j % 24)) ^ (input[i] * (j + 1)))) % 92);
+            result[j] = base92_char((result[j] + (bread * ((j + 42) % 69))) % 92);
         }
     }
 
